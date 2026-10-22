@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Польская кампания 1939 — запись на роли</title>
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&family=Marck+Script&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#1d3a8a;--paper:#e9dfc4;--paper2:#dccfae;--wood:#1b110a}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;color:#2a2118;font-family:'Courier New',monospace;
+background:radial-gradient(ellipse 70% 55% at 50% 0%,#a9772f66,transparent 70%),
+repeating-linear-gradient(92deg,#24160c 0 7px,#1b110a 7px 15px);padding:24px 12px 60px}
+.lamp{position:fixed;inset:0;pointer-events:none;background:radial-gradient(circle at 50% -5%,#ffd78a30,transparent 55%)}
+.sheet{position:relative;max-width:860px;margin:0 auto;padding:38px 34px 30px;background:
+radial-gradient(circle at 20% 10%,#fff6,transparent 50%),linear-gradient(var(--paper),var(--paper2));
+box-shadow:0 18px 40px #000a,inset 0 0 60px #8a6a2a55;transform:rotate(-.4deg);border-radius:2px}
+h1{font-size:1.5rem;letter-spacing:.12em;text-transform:uppercase;margin:0 0 4px;text-align:center}
+.sub{text-align:center;font-family:'Marck Script',cursive;color:var(--ink);font-size:1.4rem;margin-bottom:6px}
+.stamp{position:absolute;right:26px;top:22px;border:3px double #8b1a1a;color:#8b1a1a;padding:3px 9px;
+font-weight:bold;letter-spacing:.15em;transform:rotate(9deg);opacity:.75;font-size:.8rem}
+.me{display:flex;gap:10px;align-items:center;margin:8px 0 18px;flex-wrap:wrap}
+label{font-weight:bold;text-transform:uppercase;font-size:.85rem}
+input{font:inherit;font-family:'Caveat',cursive;font-size:1.35rem;color:var(--ink);background:transparent;
+border:0;border-bottom:2px dotted #5a4a30;padding:2px 4px;outline:none;min-width:0}
+input:focus{border-bottom-color:var(--ink)}
+.group{margin:22px 0 0}
+.group h2{font-size:1rem;letter-spacing:.1em;text-transform:uppercase;border-bottom:2px solid #2a2118;margin:0 0 4px;padding-bottom:2px}
+.role{margin:10px 0 2px;font-weight:bold}.role small{font-weight:normal;opacity:.7}
+.slot{display:flex;align-items:center;gap:10px;padding:3px 0;border-bottom:1px solid #6a553a44}
+.slot .n{width:22px;opacity:.6}.slot .v{flex:1;font-family:'Caveat',cursive;font-size:1.5rem;color:var(--ink);font-weight:700}
+.slot input{flex:1}
+button{font:inherit;font-size:.8rem;text-transform:uppercase;cursor:pointer;border:2px solid #2a2118;background:#2a211811;padding:3px 10px}
+button:hover{background:#2a2118;color:var(--paper)}
+.msg{color:#8b1a1a;min-height:1.2em;font-size:.85rem;margin-top:6px}
+.foot{margin-top:24px;text-align:center;font-size:.75rem;opacity:.65}
+@media(max-width:560px){.sheet{padding:28px 16px}.stamp{position:static;display:inline-block;margin-bottom:8px}}
+</style>
+</head>
+<body>
+<div class="lamp"></div>
+<div class="sheet">
+  <div class="stamp">GEHEIM</div>
+  <h1>Befehl · Besetzungsliste</h1>
+  <div class="sub">Польская кампания, сентябрь 1939 — Arma 3</div>
+  <div class="me">
+    <label for="cs">Позывной:</label>
+    <input id="cs" maxlength="24" placeholder="впиши позывной" autocomplete="off">
+  </div>
+  <div class="msg" id="msg"></div>
+  <div id="list"></div>
+  <div class="foot" id="foot"></div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script>
+// ====== НАСТРОЙКИ ======
+// 1) Вставь сюда свой firebaseConfig (Firebase Console → Project settings → Web app).
+//    Пока apiKey пустой, страница работает в ДЕМО-режиме (данные только в твоём браузере).
+const FIREBASE_CONFIG = { apiKey:"", authDomain:"", projectId:"", appId:"" };
+// 2) Состав. Число — сколько мест.
+const GROUPS = [
+ {t:"Schützengruppe — стрелковый отряд", r:[
+   ["Obersturmführer-SS","командир",1],
+   ["Sturmscharführer-SS","унтер-офицер",2],
+   ["MG-Mann","пулемётчик",2],
+   ["MG-Schütze 2","подносчик боеприпасов",2],
+   ["SS-Mann","рядовой",5]]},
+ {t:"Sanitätsgruppe — санитарный отряд", r:[["Sanitäter","санитар",2]]},
+ {t:"Panzergruppe — танковый отряд", r:[
+   ["Pz. II — Kommandant/Richtschütze","командир-наводчик",1],
+   ["Pz. 38 — Kommandant/Richtschütze","командир-наводчик",1],
+   ["Pz. II — Fahrer","механик-водитель",1],
+   ["Pz. 38 — Fahrer","механик-водитель",1]]}
+];
+// =======================
+
+const $=id=>document.getElementById(id);
+const TOK = localStorage.t || (localStorage.t = Math.random().toString(36).slice(2)+Date.now().toString(36));
+const ADMIN = location.hash==="#admin";
+const LIVE = !!FIREBASE_CONFIG.apiKey;
+let data = {};
+const say = t => { $("msg").textContent = t||""; };
+
+$("cs").value = localStorage.cs || "";
+$("cs").oninput = e => localStorage.cs = e.target.value.trim();
+
+// ---- хранилище ----
+let store;
+if (LIVE) {
+  firebase.initializeApp(FIREBASE_CONFIG);
+  const col = firebase.firestore().collection("slots");
+  col.onSnapshot(s => { data = {}; s.forEach(d => data[d.id] = d.data()); render(); }, e => say("Нет связи с базой: "+e.message));
+  store = {
+    async claim(id, cs){ const ref = col.doc(id);
+      await firebase.firestore().runTransaction(async tx => { const d = await tx.get(ref);
+        if (d.exists) throw new Error("Место уже занято"); tx.set(ref,{cs,tok:TOK,at:Date.now()}); }); },
+    release: id => col.doc(id).delete()
+  };
+} else {
+  data = JSON.parse(localStorage.demo || "{}");
+  const save = () => { localStorage.demo = JSON.stringify(data); render(); };
+  store = { async claim(id,cs){ if (data[id]) throw new Error("Место уже занято"); data[id]={cs,tok:TOK}; save(); },
+            async release(id){ delete data[id]; save(); } };
+  $("foot").textContent = "ДЕМО-режим: подключи Firebase в index.html, чтобы запись была общей для всех.";
+}
+
+async function claim(id){
+  const cs = $("cs").value.trim();
+  if (cs.length < 2) { say("Сначала впиши позывной вверху листа."); $("cs").focus(); return; }
+  if (Object.values(data).some(v => v.cs.toLowerCase() === cs.toLowerCase())) { say("Этот позывной уже записан на другую роль. Сначала освободи её."); return; }
+  say(""); try { await store.claim(id, cs); } catch(e){ say(e.message); }
+}
+async function release(id){ say(""); try { await store.release(id); } catch(e){ say(e.message); } }
+window.claim = claim; window.release = release;
+
+const esc = s => s.replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+function render(){
+  let k = 0;
+  $("list").innerHTML = GROUPS.map(g => `<div class="group"><h2>${g.t}</h2>` + g.r.map(([name,note,n]) => {
+    const rid = "r"+(k++);
+    let rows = "";
+    for (let i=0;i<n;i++){
+      const id = rid+"-"+i, v = data[id];
+      rows += `<div class="slot"><span class="n">${i+1}.</span>` + (v
+        ? `<span class="v">${esc(v.cs)}</span>` + ((v.tok===TOK||ADMIN) ? `<button onclick="release('${id}')">освободить</button>` : "")
+        : `<span class="v" style="opacity:.35">— свободно —</span><button onclick="claim('${id}')">занять</button>`) + `</div>`;
+    }
+    return `<div class="role">${name} <small>${note}</small></div>${rows}`;
+  }).join("") + `</div>`).join("");
+}
+render();
+</script>
+</body>
+</html>
